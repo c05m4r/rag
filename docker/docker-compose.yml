@@ -1,0 +1,77 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rag-qdrant
+    restart: unless-stopped
+    profiles:
+      - qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ../qdrant_storage:/qdrant/storage
+
+  rag:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    image: rag:dev
+    container_name: rag-app
+    restart: unless-stopped
+    env_file:
+      - ../env/.env
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      RAG_ROOT_PATH: /data/rag
+      VECTOR_STATE_DIR: /data/vector_state
+      VECTOR_STORE_PROVIDER: ${VECTOR_STORE_PROVIDER:-turbovec}
+      TURBOVEC_STORE_DIR: /data/turbovec_index
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-gemini}
+      EMBEDDINGS_MODEL_GEMINI: ${EMBEDDINGS_MODEL_GEMINI:-gemini-embedding-2-preview}
+      EMBEDDINGS_MODEL_OPENAI: ${EMBEDDINGS_MODEL_OPENAI:-text-embedding-3-small}
+      EMBEDDINGS_MODEL_HF: ${EMBEDDINGS_MODEL_HF:-sentence-transformers/all-MiniLM-L6-v2}
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      LLM_MODEL_GEMINI: ${LLM_MODEL_GEMINI:-gemini-1.5-flash}
+      LLM_MODEL_OPENAI: ${LLM_MODEL_OPENAI:-gpt-4o-mini}
+      LLM_MODEL_HF: ${LLM_MODEL_HF:-mistralai/Mistral-7B-Instruct-v0.2}
+      LLM_MODEL_OLLAMA: ${LLM_MODEL_OLLAMA:-llama3.1}
+      LLM_OLLAMA_BASE_URL: ${LLM_OLLAMA_BASE_URL:-http://ollama:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      HUGGINGFACE_API_TOKEN: ${HUGGINGFACE_API_TOKEN}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../rag:/data/rag
+      - ../env/vector_state:/data/vector_state
+      - ../turbovec_index:/data/turbovec_index
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+    profiles:
+      - local-llm
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: rag-ollama-init
+    profiles:
+      - local-llm
+    env_file:
+      - ../env/.env
+    depends_on:
+      - ollama
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - >
+        ollama pull "$$OLLAMA_CHAT_MODEL" &&
+        ollama pull "$$OLLAMA_EMBED_MODEL"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+volumes:
+  ollama_data:

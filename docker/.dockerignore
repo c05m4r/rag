@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+*.pyc
+env/.env
+env/.env.*
+rag
+turbovec_index
+env/vector_state
+qdrant_storage
+data
+k8s

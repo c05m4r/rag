@@ -1,0 +1,4 @@
+[tcms]
+url = https://localhost/xml-rpc/
+username = admin
+password = admin

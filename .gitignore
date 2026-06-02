@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+
+# Local env files
+env/.env
+env/.env.*
+!env/.env.example
+
+# TurboVec persisted index (local dev data)
+turbovec_index/
+vector_state/
+qdrant_storage/
+
+# Ignore local corpus content by default
+rag/*
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Configs
+data/*
+.tcms.conf
+*.conf
