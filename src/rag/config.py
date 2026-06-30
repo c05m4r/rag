@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     llm_model_ollama: str = "llama3.1"
     llm_ollama_base_url: str = "http://localhost:11434"
     llm_model_hf: str = "mistralai/Mistral-7B-Instruct-v0.2"
-    llm_model_gemini: str = "gemini-1.5-flash"
+    llm_model_gemini: str = "gemini-2.5-flash"
     huggingface_api_token: str | None = None
     llm_temperature: float = Field(default=0.1, ge=0.0, le=1.0)
 

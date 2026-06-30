@@ -42,6 +42,18 @@ async def lifespan(_: FastAPI):
     prompt = build_prompt()
     _state = initialize_runtime(llm=llm, prompt=prompt)
 
+    try:
+        logger.info("Auto-indexing RAG on startup...")
+        _state = initialize_rag(
+            llm=llm,
+            prompt=prompt,
+            traceability_store=_state.traceability_store,
+            query_traceability_store=_state.query_traceability_store,
+        )
+        logger.info("Auto-indexing complete: %s chunks", _state.chunks_indexed)
+    except Exception as exc:
+        logger.warning("Auto-indexing on startup failed: %s", exc)
+
     if settings.telegram_bot_token and settings.telegram_webhook_url:
         try:
             client = TelegramClient(settings.telegram_bot_token)

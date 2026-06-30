@@ -75,8 +75,8 @@ Usa env/.env.example como referencia.
 1. Levantar API:
 
     ```bash
-    uv run uvicorn rag.api.main:app --host 0.0.0.0 --port 8000 --reload
-    ```
+  uv run uvicorn rag.api.main:app --port 8000
+```
 
 1. Ver estado operativo:
 
