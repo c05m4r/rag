@@ -76,6 +76,87 @@ app = FastAPI(title="rag", version="1.0.0", lifespan=lifespan)
 security = HTTPBearer(auto_error=False)
 
 
+@app.post("/telegram/webhook", include_in_schema=False)
+def telegram_webhook(
+    update: dict,
+    telegram_secret_token: str | None = Header(
+        default=None,
+        alias="X-Telegram-Bot-Api-Secret-Token",
+    ),
+) -> dict:
+    if not settings.telegram_bot_token:
+        raise HTTPException(status_code=503, detail="Telegram is not configured")
+
+    expected_secret = settings.telegram_webhook_secret
+    if expected_secret and telegram_secret_token != expected_secret:
+        raise HTTPException(status_code=401, detail="Invalid Telegram secret token")
+
+    update_id = update.get("update_id")
+    if isinstance(update_id, int) and telegram_webhook_guard.is_duplicate_update(update_id):
+        logger.info("Ignoring duplicate Telegram update_id=%s", update_id)
+        return {"ok": True, "detail": "ignored_duplicate"}
+
+    message = update.get("message")
+    if not isinstance(message, dict):
+        return {"ok": True, "detail": "ignored"}
+
+    chat = message.get("chat")
+    text = message.get("text")
+    if not isinstance(chat, dict) or not isinstance(text, str) or not text.strip():
+        return {"ok": True, "detail": "ignored"}
+
+    chat_id = chat.get("id")
+    if not isinstance(chat_id, int):
+        return {"ok": True, "detail": "ignored"}
+
+    reply_to_message_id = message.get("message_id")
+    if not isinstance(reply_to_message_id, int):
+        reply_to_message_id = None
+
+    client = TelegramClient(settings.telegram_bot_token)
+    normalized_text = text.strip().lower()
+    if normalized_text in {"/start", "start", "start/"} or normalized_text.startswith(
+        "/start@"
+    ):
+        if not telegram_webhook_guard.is_first_start(chat_id):
+            return {"ok": True, "detail": "start_already_initialized"}
+
+        try:
+            client.send_message(
+                chat_id=chat_id,
+                text="Hola, soy tu asistente RAG. Enviame una pregunta y te respondo con el contexto indexado. \n\nPD: Aveces alucino cosas, valida la información de las fuentes",
+                reply_to_message_id=reply_to_message_id,
+            )
+        except RuntimeError as exc:
+            logger.error("Failed to send Telegram start message: %s", exc)
+        return {"ok": True}
+
+    try:
+        response = _answer_question(text.strip(), interaction_type="telegram")
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            try:
+                client.send_message(
+                    chat_id=chat_id,
+                    text="Todavía no tengo el índice listo.",
+                    reply_to_message_id=reply_to_message_id,
+                )
+            except RuntimeError as exc:
+                logger.error("Failed to send Telegram retry message: %s", exc)
+            return {"ok": True}
+        raise
+
+    try:
+        client.send_message(
+            chat_id=chat_id,
+            text=response.answer,
+            reply_to_message_id=reply_to_message_id,
+        )
+    except RuntimeError as exc:
+        logger.error("Failed to send Telegram answer: %s", exc)
+    return {"ok": True}
+
+
 def verify_api_key(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> None:
@@ -214,97 +295,6 @@ def query(payload: QueryRequest) -> QueryResponse:
     except Exception as exc:
         logger.exception("Query processing failed")
         return JSONResponse(status_code=500, content={"detail": f"Query failed: {exc}"})
-
-
-@app.post("/telegram/webhook")
-def telegram_webhook(
-    update: dict,
-    telegram_secret_token: str | None = Header(
-        default=None,
-        alias="X-Telegram-Bot-Api-Secret-Token",
-    ),
-) -> dict:
-    if not settings.telegram_bot_token:
-        raise HTTPException(status_code=503, detail="Telegram is not configured")
-
-    expected_secret = settings.telegram_webhook_secret
-    if expected_secret and telegram_secret_token != expected_secret:
-        raise HTTPException(status_code=401, detail="Invalid Telegram secret token")
-
-    update_id = update.get("update_id")
-    if isinstance(update_id, int) and telegram_webhook_guard.is_duplicate_update(update_id):
-        logger.info("Ignoring duplicate Telegram update_id=%s", update_id)
-        return {"ok": True, "detail": "ignored_duplicate"}
-
-    message = update.get("message")
-    if not isinstance(message, dict):
-        return {"ok": True, "detail": "ignored"}
-
-    chat = message.get("chat")
-    text = message.get("text")
-    if not isinstance(chat, dict) or not isinstance(text, str) or not text.strip():
-        return {"ok": True, "detail": "ignored"}
-
-    chat_id = chat.get("id")
-    if not isinstance(chat_id, int):
-        return {"ok": True, "detail": "ignored"}
-
-    reply_to_message_id = message.get("message_id")
-    if not isinstance(reply_to_message_id, int):
-        reply_to_message_id = None
-
-    client = TelegramClient(settings.telegram_bot_token)
-    normalized_text = text.strip().lower()
-    if normalized_text in {"/start", "start", "start/"} or normalized_text.startswith(
-        "/start@"
-    ):
-        if not telegram_webhook_guard.is_first_start(chat_id):
-            return {"ok": True, "detail": "start_already_initialized"}
-
-        client.send_message(
-            chat_id=chat_id,
-            text="Hola, soy tu asistente RAG. Enviame una pregunta y te respondo con el contexto indexado. \n\nPD: Aveces alucino cosas, valida la información de las fuentes",
-            reply_to_message_id=reply_to_message_id,
-        )
-        return {"ok": True}
-
-    try:
-        response = _answer_question(text.strip(), interaction_type="telegram")
-    except HTTPException as exc:
-        if exc.status_code == 503:
-            client.send_message(
-                chat_id=chat_id,
-                text="Todavía no tengo el índice listo.",
-                reply_to_message_id=reply_to_message_id,
-            )
-            return {"ok": True}
-        raise
-
-    client.send_message(
-        chat_id=chat_id,
-        text=response.answer,
-        reply_to_message_id=reply_to_message_id,
-    )
-    return {"ok": True}
-
-
-@app.post("/telegram/set-webhook", dependencies=[Depends(verify_api_key)])
-def telegram_set_webhook() -> dict:
-    if not settings.telegram_bot_token:
-        raise HTTPException(status_code=503, detail="Telegram bot token not configured")
-    if not settings.telegram_webhook_url:
-        raise HTTPException(
-            status_code=503, detail="Telegram webhook url not configured"
-        )
-
-    client = TelegramClient(settings.telegram_bot_token)
-    try:
-        return client.set_webhook(
-            webhook_url=settings.telegram_webhook_url,
-            secret_token=settings.telegram_webhook_secret,
-        )
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/ingest", response_model=IngestResponse, dependencies=[Depends(verify_api_key)])
