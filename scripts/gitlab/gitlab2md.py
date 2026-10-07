@@ -86,6 +86,16 @@ def fetch_issues(base_url: str, project_id: str, token: str, state: str) -> list
     return paged_get(base_url, path, token)
 
 
+def fetch_issue(base_url: str, project_id: str, issue_iid: int, token: str) -> dict:
+    encoded = encode_project_id(project_id)
+    path = f"/projects/{encoded}/issues/{issue_iid}"
+    url = f"{base_url}{path}"
+    data, _ = request_json(url, token)
+    if isinstance(data, dict):
+        return data
+    raise SystemExit("Unexpected response fetching single issue")
+
+
 def fetch_issue_notes(
     base_url: str, project_id: str, issue_iid: int, token: str
 ) -> list[dict]:
@@ -200,6 +210,11 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         default=str(Path(__file__).resolve().parents[2] / "rag" / "gitlab"),
     )
+    parser.add_argument(
+        "--issue-iid",
+        type=int,
+        help="Export only this issue IID (e.g., 374)",
+    )
     return parser.parse_args()
 
 
@@ -215,10 +230,24 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    project_prefix = sanitize_filename(args.project_id)
+
+    if args.issue_iid is not None:
+        print(f"Fetching issue #{args.issue_iid} from GitLab...")
+        issue = fetch_issue(base_url, args.project_id, args.issue_iid, args.token)
+        issue_iid = issue.get("iid")
+        if issue_iid is None:
+            raise SystemExit("Issue missing iid")
+        notes = fetch_issue_notes(base_url, args.project_id, issue_iid, args.token)
+        links = fetch_issue_links(base_url, args.project_id, issue_iid, args.token)
+        markdown = format_issue_markdown(issue, notes, links)
+        save_issue_markdown(issue, markdown, output_dir, project_prefix)
+        print(f"Export complete in {output_dir}")
+        return
+
     print("Fetching issues from GitLab...")
     issues = fetch_issues(base_url, args.project_id, args.token, args.state)
     print(f"Found {len(issues)} issues")
-    project_prefix = sanitize_filename(args.project_id)
 
     for issue in issues:
         issue_iid = issue.get("iid")
