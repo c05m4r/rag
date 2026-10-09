@@ -1,3 +1,4 @@
+import os
 import re
 import ssl
 from configparser import ConfigParser
@@ -14,6 +15,10 @@ def create_ssl_context():
 
 
 def load_tcms_config():
+    env_url = os.getenv("TCMS_URL")
+    if env_url:
+        return env_url, os.getenv("TCMS_USERNAME"), os.getenv("TCMS_PASSWORD")
+
     env_conf = Path(__file__).resolve().parents[1] / "env" / ".tcms.conf"
     if env_conf.exists():
         config = ConfigParser()

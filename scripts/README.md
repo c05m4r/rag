@@ -21,6 +21,23 @@
 
 4. Configurar las variables de entorno en scripts/env/*
 
+# Ejecucion automatica (sync.sh)
+
+Ejecuta Kiwi, GitLab (multiples grupos) y opcionalmente tokens leyendo todo de `scripts/.env`.
+
+```bash
+cp scripts/.env.example scripts/.env   # completar credenciales y grupos
+./scripts/sync.sh list                 # ver configuracion
+./scripts/sync.sh                      # kiwi + todos los grupos gitlab habilitados
+./scripts/sync.sh kiwi
+./scripts/sync.sh gitlab               # todos los grupos habilitados
+./scripts/sync.sh gitlab core docs     # solo esos grupos
+./scripts/sync.sh tokens
+./scripts/sync.sh --dry-run            # muestra comandos sin ejecutarlos
+```
+
+Los grupos se definen en `GITLAB_GROUPS` y cada uno con variables `GITLAB_<GRUPO>_*` (ver `.env.example`).
+
 # Extraer casos de prueba Kiwi
 
 ```bash

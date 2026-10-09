@@ -12,6 +12,7 @@ __pycache__/
 # Local env files
 env/.env
 env/.env.*
+scripts/.env
 !env/.env.example
 
 # TurboVec persisted index (local dev data)
@@ -30,3 +31,5 @@ rag/*
 data/*
 .tcms.conf
 *.conf
+
+.codegraph
