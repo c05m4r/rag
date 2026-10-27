@@ -13,6 +13,9 @@ __pycache__/
 env/.env
 env/.env.*
 scripts/.env
+
+# Registro y versiones de los .md descargados
+scripts/registry/
 !env/.env.example
 
 # TurboVec persisted index (local dev data)

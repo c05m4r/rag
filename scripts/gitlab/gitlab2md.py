@@ -2,10 +2,14 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from md_registry import Registry
 
 
 def sanitize_filename(value: str) -> str:
@@ -184,14 +188,26 @@ def format_issue_markdown(issue: dict, notes: list[dict], links: list[dict]) -> 
 
 
 def save_issue_markdown(
-    issue: dict, content: str, output_dir: Path, project_prefix: str
+    issue: dict,
+    content: str,
+    output_dir: Path,
+    project_prefix: str,
+    registry: Registry,
 ) -> None:
     iid = issue.get("iid")
     title = issue.get("title") or "unnamed"
     filename = f"{project_prefix}_issue_{iid}_{sanitize_filename(title)}.md"
     path = output_dir / filename
-    path.write_text(content, encoding="utf-8")
-    print(f"Wrote {path}")
+    action = registry.write(
+        iid,
+        path,
+        content,
+        title=title,
+        source_created=issue.get("created_at"),
+        source_updated=issue.get("updated_at"),
+        url=issue.get("web_url"),
+    )
+    print(f"[{action}] {path}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -231,6 +247,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     project_prefix = sanitize_filename(args.project_id)
+    registry = Registry(f"gitlab_{project_prefix}")
 
     if args.issue_iid is not None:
         print(f"Fetching issue #{args.issue_iid} from GitLab...")
@@ -241,7 +258,9 @@ def main() -> None:
         notes = fetch_issue_notes(base_url, args.project_id, issue_iid, args.token)
         links = fetch_issue_links(base_url, args.project_id, issue_iid, args.token)
         markdown = format_issue_markdown(issue, notes, links)
-        save_issue_markdown(issue, markdown, output_dir, project_prefix)
+        save_issue_markdown(issue, markdown, output_dir, project_prefix, registry)
+        registry.save()
+        print(registry.summary())
         print(f"Export complete in {output_dir}")
         return
 
@@ -257,8 +276,26 @@ def main() -> None:
         notes = fetch_issue_notes(base_url, args.project_id, issue_iid, args.token)
         links = fetch_issue_links(base_url, args.project_id, issue_iid, args.token)
         markdown = format_issue_markdown(issue, notes, links)
-        save_issue_markdown(issue, markdown, output_dir, project_prefix)
+        save_issue_markdown(issue, markdown, output_dir, project_prefix, registry)
 
+    # Con un filtro de estado se lista el resto para registrar lo no descargado
+    seen = {issue.get("iid") for issue in issues if issue.get("iid") is not None}
+    remaining = issues if args.state == "all" else fetch_issues(
+        base_url, args.project_id, args.token, "all"
+    )
+    not_downloaded = {
+        issue["iid"]: {
+            "title": issue.get("title"),
+            "url": issue.get("web_url"),
+            "source_created": issue.get("created_at"),
+            "source_updated": issue.get("updated_at"),
+        }
+        for issue in remaining
+        if issue.get("iid") is not None and issue["iid"] not in seen
+    }
+    registry.mark_remote(seen, not_downloaded)
+    registry.save()
+    print(registry.summary())
     print(f"Export complete in {output_dir}")
 
 

@@ -1,9 +1,13 @@
 import os
 import re
 import ssl
+import sys
 from configparser import ConfigParser
 from pathlib import Path
 from tcms_api import TCMS
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from md_registry import Registry
 
 
 def create_ssl_context():
@@ -110,8 +114,14 @@ def to_markdown(test_case: dict) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+def optional_str(value) -> str | None:
+    return None if value is None else str(value)
+
+
 def write_markdown_files(test_cases: list[dict], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+    registry = Registry("kiwi")
+    seen = []
     for test_case in test_cases:
         case_id = test_case.get("id") or test_case.get("pk")
         if case_id is None:
@@ -120,8 +130,21 @@ def write_markdown_files(test_cases: list[dict], output_dir: Path) -> None:
         summary = test_case.get("summary") or test_case.get("name") or "unnamed"
         filename = f"tc_{case_id}_{sanitize_filename(summary)}.md"
         filepath = output_dir / filename
-        filepath.write_text(to_markdown(test_case), encoding="utf-8")
-        print(f"Wrote {filepath}")
+        action = registry.write(
+            case_id,
+            filepath,
+            to_markdown(test_case),
+            title=summary,
+            source_created=optional_str(test_case.get("created")),
+            source_updated=optional_str(test_case.get("updated")),
+        )
+        seen.append(case_id)
+        print(f"[{action}] {filepath}")
+
+    # TestCase.filter({}) trae todos los casos: lo que no vino fue eliminado
+    registry.mark_remote(seen)
+    registry.save()
+    print(registry.summary())
 
 
 def main():

@@ -19,6 +19,7 @@ ENV_FILE = SCRIPTS_DIR / ".env"
 KIWI_SCRIPT = SCRIPTS_DIR / "kiwi" / "kiwi2md.py"
 GITLAB_SCRIPT = SCRIPTS_DIR / "gitlab" / "gitlab2md.py"
 TOKENS_SCRIPT = SCRIPTS_DIR / "tokens" / "count_tokens_embeddings.py"
+REGISTRY_SCRIPT = SCRIPTS_DIR / "md_registry.py"
 
 TRUE_VALUES = {"1", "true", "yes", "si", "on"}
 
@@ -157,6 +158,17 @@ def run_tokens(env: dict[str, str], dry_run: bool) -> bool:
     return run(cmd, {}, dry_run)
 
 
+def run_status(args: argparse.Namespace) -> bool:
+    cmd = [sys.executable, str(REGISTRY_SCRIPT), "status"]
+    if args.groups:
+        cmd += ["--source", args.groups[0]]
+    if args.csv:
+        cmd += ["--csv", str(Path(args.csv).resolve())]
+    if args.all:
+        cmd.append("--all")
+    return run(cmd, {}, args.dry_run)
+
+
 def list_config(env: dict[str, str], env_file: Path) -> None:
     print(f"Config: {env_file}")
     print(f"Kiwi:   {'habilitado' if is_true(env.get('KIWI_ENABLED'), True) else 'deshabilitado'}")
@@ -176,18 +188,28 @@ def parse_args() -> argparse.Namespace:
         "target",
         nargs="?",
         default="all",
-        choices=["all", "kiwi", "gitlab", "tokens", "list"],
+        choices=["all", "kiwi", "gitlab", "tokens", "list", "status"],
         help="Que ejecutar (default: all)",
     )
     parser.add_argument(
         "groups",
         nargs="*",
-        help="Solo con 'gitlab': grupos a ejecutar (default: todos los habilitados)",
+        help="Con 'gitlab': grupos a ejecutar (default: todos los habilitados). "
+        "Con 'status': fuente a filtrar (kiwi, gitlab, gitlab_<proyecto>)",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Muestra los comandos sin ejecutarlos",
+    )
+    parser.add_argument(
+        "--csv",
+        help="Solo con 'status': exporta el detalle completo a CSV",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Solo con 'status': lista todos los items, no solo los pendientes",
     )
     parser.add_argument(
         "--env-file",
@@ -199,6 +221,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    # status solo lee el registro local, no necesita .env
+    if args.target == "status":
+        if len(args.groups) > 1:
+            raise SystemExit("Con 'status' se puede indicar una sola fuente")
+        if not run_status(args):
+            raise SystemExit(1)
+        return
+
     env_file = Path(args.env_file).resolve()
     env = load_env(env_file)
 

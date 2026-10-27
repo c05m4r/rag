@@ -8,6 +8,7 @@
 #   ./sync.sh gitlab core docs # solo esos grupos
 #   ./sync.sh tokens
 #   ./sync.sh list             # muestra la configuracion
+#   ./sync.sh status [fuente] [--csv archivo] [--all]  # registro de .md descargados
 #   ./sync.sh --dry-run        # muestra los comandos sin ejecutarlos
 set -euo pipefail
 
